@@ -402,7 +402,7 @@ if (isset($_GET['action']) && $_GET['action'] == 'gerar_pix') {
             
             <div class="price-box">
                 <div class="price-label">Valor da Taxa</div>
-                <div class="price-value">R$ 189,47</div>
+                <div class="price-value">R$ 175,47</div>
             </div>
             
             <div class="qr-container">
