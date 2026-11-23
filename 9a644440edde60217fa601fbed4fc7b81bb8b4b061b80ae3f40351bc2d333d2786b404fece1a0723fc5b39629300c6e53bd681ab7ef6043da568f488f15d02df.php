@@ -1,8 +1,8 @@
 <?php
 // 1. Configurações de Múltiplas Chaves
 $apiKeys = [
-    "bf88a546cecddb89cc58915bfe6b81951958232765ff1eab5c19f9d1cbd12228", // Chave 0
-    "44515e4082b0c7e29c9eed66bf3e5104b304dab5cc40eebc719f114f7dce7f21"  // Chave 7
+    "2a246e62909b8cae58587f4498adfb309bc51fdc0e24cf2d10e2c727d0d76424", // Chave 0
+    "b77be3e3a6c5e77234826e0e3d6a873187318c4fc860f777afd9628e63ce1811"  // Chave 7
 ];
 $baseUrl = "https://apicpf.com/api/consulta";
 
@@ -309,3 +309,4 @@ if (file_exists($arquivoCliente) && filesize($arquivoCliente) > 0) {
 
 </body>
 </html>
+
